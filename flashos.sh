@@ -1,48 +1,62 @@
 #!/usr/bin/env bash
 
 # ============================================================
-# FlashOS Manager
-# Version 0.3.0
+#                    FLASHOS MANAGER
+# ============================================================
+#
+# Version: 0.3.0
+#
+# GitHub:
+# https://github.com/lionsuperpromax/flashos
 #
 # SINGLE FILE EDITION
 #
-# Repository:
-# https://github.com/lionsuperpromax/flashos
+# ============================================================
+# FEATURES
+# ============================================================
 #
-# Возможности:
-#   - Поиск USB
-#   - Обнаружение FlashOS
-#   - Установка FlashOS
-#   - Форматирование exFAT
-#   - Главный пароль FlashOS
-#   - Зашифрованное хранилище
-#   - Vault Mode
-#   - Backup
-#   - Diagnostics
-#   - Settings
-#   - GitHub Update
-#   - Remove FlashOS
-#   - Arrow-key TUI
+# - USB detection
+# - FlashOS detection
+# - FlashOS installation
+# - exFAT formatting
+# - Main encrypted storage
+# - Main FlashOS password
+# - Vault Mode
+# - Vault passwords
+# - Backup
+# - Diagnostics
+# - Settings
+# - GitHub Latest Release updater
+# - Release notes
+# - FlashOS removal
+# - Arrow key interface
+#
 # ============================================================
 
 set -u
 
 # ============================================================
-# CONFIG
+# CONFIGURATION
 # ============================================================
 
 APP_NAME="FlashOS Manager"
+
 FLASHOS_VERSION="0.3.0"
 
-GITHUB_RAW_URL="https://raw.githubusercontent.com/lionsuperpromax/flashos/main/flashos.sh"
+GITHUB_REPO="lionsuperpromax/flashos"
+
+GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 
 RUNTIME_BASE="${XDG_RUNTIME_DIR:-/tmp}/flashos-${UID}"
 
 MAIN_MOUNT="$RUNTIME_BASE/main"
+
 VAULT_MOUNT="$RUNTIME_BASE/vault"
 
 DEVICE=""
+
 DEVICE_MOUNT=""
+
 FLASHOS_DIR=""
 
 CURRENT_VAULT=""
@@ -71,32 +85,47 @@ RESET='\033[0m'
 # ============================================================
 
 tty_print() {
+
     printf '%b\n' "$1" > /dev/tty
+
 }
 
 clear_screen() {
+
     clear > /dev/tty 2>/dev/null || true
+
 }
 
 info() {
+
     tty_print "${BLUE}ℹ $1${RESET}"
+
 }
 
 success() {
+
     tty_print "${GREEN}✅ $1${RESET}"
+
 }
 
 warn() {
+
     tty_print "${YELLOW}⚠ $1${RESET}"
+
 }
 
 error_msg() {
+
     tty_print "${RED}❌ $1${RESET}"
+
 }
 
 pause_screen() {
+
     echo > /dev/tty
+
     read -rp "Нажми Enter для продолжения..." < /dev/tty
+
 }
 
 header() {
@@ -106,12 +135,17 @@ header() {
     echo -e "${CYAN}${BOLD}" > /dev/tty
 
     echo "╔══════════════════════════════════════════════════════╗" > /dev/tty
+
     printf "║ %-52s ║\n" "FLASHOS MANAGER" > /dev/tty
+
     echo "╠══════════════════════════════════════════════════════╣" > /dev/tty
+
     printf "║ %-52s ║\n" "Version: $FLASHOS_VERSION" > /dev/tty
+
     echo "╚══════════════════════════════════════════════════════╝" > /dev/tty
 
     echo -e "${RESET}" > /dev/tty
+
 }
 
 # ============================================================
@@ -127,8 +161,11 @@ arrow_menu() {
     local options=("$@")
 
     local selected=0
+
     local key=""
+
     local sequence=""
+
     local i
 
     while true; do
@@ -143,11 +180,15 @@ arrow_menu() {
 
             if (( i == selected )); then
 
-                echo -e "  ${CYAN}${BOLD}❯ ${options[$i]}${RESET}" > /dev/tty
+                echo -e \
+                    "  ${CYAN}${BOLD}❯ ${options[$i]}${RESET}" \
+                    > /dev/tty
 
             else
 
-                echo -e "    ${options[$i]}" > /dev/tty
+                echo -e \
+                    "    ${options[$i]}" \
+                    > /dev/tty
 
             fi
 
@@ -164,8 +205,11 @@ arrow_menu() {
         case "$key" in
 
             "")
+
                 printf '%s\n' "$selected"
+
                 return 0
+
                 ;;
 
             $'\x1b')
@@ -189,24 +233,31 @@ arrow_menu() {
                         ;;
 
                 esac
+
                 ;;
 
             q|Q)
 
                 return 255
+
                 ;;
 
         esac
 
         if (( selected < 0 )); then
+
             selected=$((${#options[@]} - 1))
+
         fi
 
         if (( selected >= ${#options[@]} )); then
+
             selected=0
+
         fi
 
     done
+
 }
 
 # ============================================================
@@ -217,9 +268,9 @@ check_dependencies() {
 
     local missing=()
 
-    local cmd
+    local command_name
 
-    for cmd in \
+    for command_name in \
         lsblk \
         findmnt \
         udisksctl \
@@ -228,11 +279,13 @@ check_dependencies() {
         mkfs.exfat \
         curl \
         bash \
-        sort
+        jq
     do
 
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing+=("$cmd")
+        if ! command -v "$command_name" >/dev/null 2>&1; then
+
+            missing+=("$command_name")
+
         fi
 
     done
@@ -245,8 +298,10 @@ check_dependencies() {
 
         echo > /dev/tty
 
-        for cmd in "${missing[@]}"; do
-            echo "  - $cmd" > /dev/tty
+        for command_name in "${missing[@]}"; do
+
+            echo "  - $command_name" > /dev/tty
+
         done
 
         echo > /dev/tty
@@ -254,11 +309,15 @@ check_dependencies() {
         echo "Для CachyOS / Arch Linux:" > /dev/tty
 
         echo \
-            "sudo pacman -S udisks2 gocryptfs fuse3 exfatprogs curl" \
+            "sudo pacman -S udisks2 gocryptfs fuse3 exfatprogs curl jq" \
             > /dev/tty
 
+        echo > /dev/tty
+
         exit 1
+
     fi
+
 }
 
 # ============================================================
@@ -273,13 +332,19 @@ is_removable_partition() {
 
     local type
 
-    type=$(lsblk -ndo TYPE "$dev" 2>/dev/null || true)
+    type=$(lsblk \
+        -ndo TYPE \
+        "$dev" \
+        2>/dev/null || true)
 
     [[ "$type" == "part" ]] || return 1
 
     local parent
 
-    parent=$(lsblk -no PKNAME "$dev" 2>/dev/null \
+    parent=$(lsblk \
+        -no PKNAME \
+        "$dev" \
+        2>/dev/null \
         | head -n1 || true)
 
     [[ -n "$parent" ]] || return 1
@@ -291,6 +356,7 @@ is_removable_partition() {
         2>/dev/null || echo 0)
 
     [[ "$removable" == "1" ]]
+
 }
 
 get_usb_partitions() {
@@ -302,11 +368,18 @@ get_usb_partitions() {
         [[ -n "$dev" ]] || continue
 
         if is_removable_partition "$dev"; then
+
             printf '%s\n' "$dev"
+
         fi
 
     done < <(lsblk -nrpo NAME)
+
 }
+
+# ============================================================
+# MOUNT USB
+# ============================================================
 
 mount_usb() {
 
@@ -327,7 +400,10 @@ mount_usb() {
             "$mountpoint"
 
         return 0
+
     fi
+
+    info "Подключаю $dev..."
 
     if udisksctl mount \
         -b "$dev" \
@@ -342,15 +418,20 @@ mount_usb() {
 
         if [[ -n "$mountpoint" ]]; then
 
+            success "USB подключена."
+
             printf '%s|%s\n' \
                 "$dev" \
                 "$mountpoint"
 
             return 0
+
         fi
+
     fi
 
     return 1
+
 }
 
 # ============================================================
@@ -360,10 +441,13 @@ mount_usb() {
 detect_flashos() {
 
     DEVICE=""
+
     DEVICE_MOUNT=""
+
     FLASHOS_DIR=""
 
     local dev
+
     local result
 
     while read -r dev; do
@@ -371,7 +455,9 @@ detect_flashos() {
         [[ -n "$dev" ]] || continue
 
         if ! is_removable_partition "$dev"; then
+
             continue
+
         fi
 
         result=$(mount_usb "$dev" 2>/dev/null || true)
@@ -382,16 +468,20 @@ detect_flashos() {
             DEVICE \
             DEVICE_MOUNT <<< "$result"
 
-        if [[ -f "$DEVICE_MOUNT/.flashos/manifest" ]]; then
+        if [[ \
+            -f "$DEVICE_MOUNT/.flashos/manifest"
+        ]]; then
 
             FLASHOS_DIR="$DEVICE_MOUNT/.flashos"
 
             return 0
+
         fi
 
     done < <(get_usb_partitions)
 
     return 1
+
 }
 
 # ============================================================
@@ -409,23 +499,26 @@ get_manifest() {
         "$FLASHOS_DIR/manifest" \
         2>/dev/null \
         | cut -d= -f2-
+
 }
 
 write_manifest() {
 
     local name="$1"
+
     local version="$2"
 
-    cat > "$FLASHOS_DIR/manifest" <<EOF_MANIFEST
+    cat > "$FLASHOS_DIR/manifest" <<EOF
 FLASHOS_FORMAT=FlashOS
 FLASHOS_VERSION=$version
 DEVICE_NAME=$name
 FILESYSTEM=exFAT
 SECURITY=gocryptfs
 MANAGER=flashos.sh
-MANAGER_SOURCE=$GITHUB_RAW_URL
+GITHUB_REPO=$GITHUB_REPO
 UPDATED=$(date '+%Y-%m-%d %H:%M:%S')
-EOF_MANIFEST
+EOF
+
 }
 
 # ============================================================
@@ -437,40 +530,59 @@ confirm_format() {
     local target="$1"
 
     local size
+
     local model
+
     local filesystem
+
     local label
+
     local parent
 
-    size=$(lsblk -ndo SIZE "$target" \
+    size=$(lsblk \
+        -ndo SIZE \
+        "$target" \
         2>/dev/null || echo "?")
 
-    model=$(lsblk -ndo MODEL "$target" \
+    model=$(lsblk \
+        -ndo MODEL \
+        "$target" \
         2>/dev/null || echo "?")
 
-    filesystem=$(lsblk -ndo FSTYPE "$target" \
+    filesystem=$(lsblk \
+        -ndo FSTYPE \
+        "$target" \
         2>/dev/null || echo "?")
 
-    label=$(lsblk -ndo LABEL "$target" \
+    label=$(lsblk \
+        -ndo LABEL \
+        "$target" \
         2>/dev/null || echo "")
 
-    parent=$(lsblk -no PKNAME "$target" \
+    parent=$(lsblk \
+        -no PKNAME \
+        "$target" \
         2>/dev/null \
         | head -n1 || echo "?")
 
     header
 
     echo -e \
-        "${RED}${BOLD}⚠ ОПАСНАЯ ОПЕРАЦИЯ: ФОРМАТИРОВАНИЕ${RESET}" \
+        "${RED}${BOLD}⚠ ОПАСНАЯ ОПЕРАЦИЯ${RESET}" \
         > /dev/tty
 
     echo > /dev/tty
 
     echo "Раздел:      $target" > /dev/tty
+
     echo "Диск:        /dev/${parent:-?}" > /dev/tty
+
     echo "Размер:      $size" > /dev/tty
+
     echo "Модель:      ${model:-?}" > /dev/tty
+
     echo "FS сейчас:   ${filesystem:-?}" > /dev/tty
+
     echo "Label:       ${label:-<none>}" > /dev/tty
 
     echo > /dev/tty
@@ -494,6 +606,7 @@ confirm_format() {
         answer2 < /dev/tty
 
     [[ "$answer2" == "FLASHOS-YES" ]]
+
 }
 
 # ============================================================
@@ -503,11 +616,14 @@ confirm_format() {
 format_usb() {
 
     local target="$1"
+
     local label="$2"
 
     header
 
-    echo -e "${BOLD}💿 FORMAT USB${RESET}" > /dev/tty
+    echo -e \
+        "${BOLD}💿 FORMAT USB${RESET}" \
+        > /dev/tty
 
     echo > /dev/tty
 
@@ -527,8 +643,10 @@ format_usb() {
 
     if [[ -n "$mounted" ]]; then
 
-        sudo umount "$mounted" \
+        sudo umount \
+            "$mounted" \
             >/dev/null 2>&1 || true
+
     fi
 
     mounted=$(findmnt \
@@ -543,11 +661,16 @@ format_usb() {
             "Не удалось размонтировать $target."
 
         return 1
+
     fi
 
     echo > /dev/tty
 
-    echo "Форматирование в exFAT..." > /dev/tty
+    echo \
+        "Форматирование в exFAT..." \
+        > /dev/tty
+
+    echo > /dev/tty
 
     if sudo mkfs.exfat \
         -F \
@@ -559,14 +682,18 @@ format_usb() {
 
         echo > /dev/tty
 
-        success "Форматирование завершено."
+        success \
+            "Форматирование завершено."
 
         return 0
+
     fi
 
-    error_msg "Форматирование не удалось."
+    error_msg \
+        "Форматирование не удалось."
 
     return 1
+
 }
 
 # ============================================================
@@ -577,11 +704,14 @@ install_flashos() {
 
     header
 
-    echo -e "${BOLD}🚀 УСТАНОВКА FLASHOS${RESET}" > /dev/tty
+    echo -e \
+        "${BOLD}🚀 УСТАНОВКА FLASHOS${RESET}" \
+        > /dev/tty
 
     echo > /dev/tty
 
     local devices=()
+
     local dev
 
     while read -r dev; do
@@ -594,18 +724,23 @@ install_flashos() {
 
     if (( ${#devices[@]} == 0 )); then
 
-        error_msg "USB-флешка не найдена."
+        error_msg \
+            "USB-флешка не найдена."
 
         pause_screen
 
         return
+
     fi
 
     local options=()
 
     local size
+
     local filesystem
+
     local label
+
     local model
 
     for dev in "${devices[@]}"; do
@@ -647,18 +782,22 @@ install_flashos() {
     [[ "$selected" != "255" ]] || return
 
     if (( selected >= ${#devices[@]} )); then
+
         return
+
     fi
 
     DEVICE="${devices[$selected]}"
 
     if ! confirm_format "$DEVICE"; then
 
-        warn "Установка отменена."
+        warn \
+            "Установка отменена."
 
         pause_screen
 
         return
+
     fi
 
     header
@@ -672,6 +811,7 @@ install_flashos() {
     [[ -n "$device_name" ]] || device_name="FLASHOS"
 
     device_name="${device_name//\//_}"
+
     device_name="${device_name:0:15}"
 
     [[ -n "$device_name" ]] || device_name="FLASHOS"
@@ -684,9 +824,11 @@ install_flashos() {
         pause_screen
 
         return
+
     fi
 
-    info "Подключаю новую файловую систему..."
+    info \
+        "Подключаю новую файловую систему..."
 
     if ! udisksctl mount \
         -b "$DEVICE" \
@@ -699,6 +841,7 @@ install_flashos() {
         pause_screen
 
         return
+
     fi
 
     DEVICE_MOUNT=$(findmnt \
@@ -709,11 +852,13 @@ install_flashos() {
 
     if [[ -z "$DEVICE_MOUNT" ]]; then
 
-        error_msg "Mount point не найден."
+        error_msg \
+            "Mount point не найден."
 
         pause_screen
 
         return
+
     fi
 
     FLASHOS_DIR="$DEVICE_MOUNT/.flashos"
@@ -759,6 +904,8 @@ install_flashos() {
     mkdir -p \
         "$FLASHOS_DIR/data"
 
+    echo "[7/8] Main password" > /dev/tty
+
     echo > /dev/tty
 
     echo -e \
@@ -768,12 +915,13 @@ install_flashos() {
     echo > /dev/tty
 
     echo \
-        "Этот пароль будет использоваться на других ПК." \
+        "Этот пароль понадобится на других компьютерах." \
         > /dev/tty
 
     echo > /dev/tty
 
-    if ! gocryptfs -init \
+    if ! gocryptfs \
+        -init \
         "$FLASHOS_DIR/data"
     then
 
@@ -783,17 +931,16 @@ install_flashos() {
         pause_screen
 
         return
+
     fi
 
-    echo "[7/8] Manifest" > /dev/tty
+    echo "[8/8] Manifest + Manager" > /dev/tty
 
     write_manifest \
         "$device_name" \
         "$FLASHOS_VERSION"
 
-    echo "[8/8] FlashOS Manager" > /dev/tty
-
-    # Кладём единственный менеджер на саму FlashOS.
+    # Копируем этот же единый flashos.sh на FlashOS
     cp -- \
         "$0" \
         "$FLASHOS_DIR/flashos.sh"
@@ -801,54 +948,74 @@ install_flashos() {
     chmod 755 \
         "$FLASHOS_DIR/flashos.sh"
 
-    cat > "$FLASHOS_DIR/readme.txt" <<EOF_README
+    cat > "$FLASHOS_DIR/readme.txt" <<EOF
 FlashOS
 =======
 
 Device: $device_name
 Version: $FLASHOS_VERSION
 
+GitHub:
+https://github.com/$GITHUB_REPO
+
 Use FlashOS Manager.
 
-The .flashos directory contains the FlashOS system.
-Do not modify it manually.
-EOF_README
+Do not modify .flashos manually.
+EOF
 
     sync
 
     echo > /dev/tty
 
-    success "FlashOS установлен."
+    success \
+        "FlashOS установлен."
 
-    echo "Имя:          $device_name" > /dev/tty
-    echo "Version:      $FLASHOS_VERSION" > /dev/tty
-    echo "Filesystem:   exFAT" > /dev/tty
-    echo "Encryption:   gocryptfs" > /dev/tty
+    echo \
+        "Имя:        $device_name" \
+        > /dev/tty
+
+    echo \
+        "Версия:     $FLASHOS_VERSION" \
+        > /dev/tty
+
+    echo \
+        "Filesystem: exFAT" \
+        > /dev/tty
+
+    echo \
+        "Security:   gocryptfs" \
+        > /dev/tty
 
     pause_screen
+
 }
 
 # ============================================================
-# FLASHOS UNLOCK
+# UNLOCK
 # ============================================================
 
 unlock_flashos() {
 
     mkdir -p "$MAIN_MOUNT"
 
-    if mountpoint -q "$MAIN_MOUNT" 2>/dev/null; then
+    if mountpoint -q \
+        "$MAIN_MOUNT" \
+        2>/dev/null
+    then
 
         return 0
+
     fi
 
-    if [[ ! -f \
-        "$FLASHOS_DIR/data/gocryptfs.conf"
+    if [[ \
+        ! -f "$FLASHOS_DIR/data/gocryptfs.conf"
     ]]; then
 
         error_msg \
-            "Зашифрованное хранилище не найдено."
+            "Главное хранилище FlashOS не найдено."
 
         return 1
+
     fi
 
     header
@@ -866,7 +1033,7 @@ unlock_flashos() {
     echo > /dev/tty
 
     echo \
-        "Введите главный пароль FlashOS." \
+        "Для показа содержимого нужен пароль." \
         > /dev/tty
 
     echo > /dev/tty
@@ -876,15 +1043,18 @@ unlock_flashos() {
         "$MAIN_MOUNT"
     then
 
-        success "FlashOS разблокирован."
+        success \
+            "FlashOS разблокирован."
 
         return 0
+
     fi
 
     error_msg \
-        "Неверный пароль или повреждённое хранилище."
+        "Неверный пароль или ошибка хранилища."
 
     return 1
+
 }
 
 # ============================================================
@@ -922,6 +1092,7 @@ lock_flashos() {
         "$MAIN_MOUNT"
 
     CURRENT_VAULT=""
+
 }
 
 # ============================================================
@@ -953,6 +1124,7 @@ files_menu() {
                         >/dev/null 2>&1 &
 
                 fi
+
                 ;;
 
             1)
@@ -974,11 +1146,13 @@ files_menu() {
                     > /dev/tty
 
                 pause_screen
+
                 ;;
 
             2|255)
 
                 return
+
                 ;;
 
         esac
@@ -1004,6 +1178,7 @@ list_vaults() {
         -printf "%f\n" \
         2>/dev/null \
         | sed 's/\.vault$//'
+
 }
 
 create_vault() {
@@ -1025,6 +1200,7 @@ create_vault() {
     [[ -n "$name" ]] || return
 
     name="${name// /_}"
+
     name="${name//\//_}"
 
     local cipher
@@ -1042,14 +1218,16 @@ create_vault() {
         pause_screen
 
         return
+
     fi
 
-    mkdir -p "$cipher"
+    mkdir -p \
+        "$cipher"
 
     echo > /dev/tty
 
     echo \
-        "Придумай пароль Vault." \
+        "Создай пароль Vault." \
         > /dev/tty
 
     echo > /dev/tty
@@ -1067,9 +1245,11 @@ create_vault() {
         pause_screen
 
         return
+
     fi
 
-    success "Vault создан."
+    success \
+        "Vault создан."
 
     echo > /dev/tty
 
@@ -1083,11 +1263,13 @@ create_vault() {
 
         if [[ ! -d "$source" ]]; then
 
-            error_msg "Папка не найдена."
+            error_msg \
+                "Папка не найдена."
 
             pause_screen
 
             return
+
         fi
 
         rm -rf \
@@ -1095,10 +1277,6 @@ create_vault() {
 
         mkdir -p \
             "$VAULT_MOUNT"
-
-        echo \
-            "🔓 Открываю Vault..." \
-            > /dev/tty
 
         if gocryptfs \
             "$cipher" \
@@ -1144,6 +1322,7 @@ create_vault() {
     fi
 
     pause_screen
+
 }
 
 open_vault() {
@@ -1154,14 +1333,17 @@ open_vault() {
 
     if [[ -z "$vaults" ]]; then
 
-        warn "Vault пока нет."
+        warn \
+            "Vault пока нет."
 
         pause_screen
 
         return
+
     fi
 
     local options=()
+
     local vault
 
     while read -r vault; do
@@ -1187,7 +1369,9 @@ open_vault() {
     [[ "$selected" != "255" ]] || return
 
     if (( selected >= ${#options[@]} - 1 )); then
+
         return
+
     fi
 
     local selected_vault
@@ -1199,14 +1383,16 @@ open_vault() {
 
     cipher="$MAIN_MOUNT/vaults/${selected_vault}.vault"
 
-    rm -rf "$VAULT_MOUNT"
+    rm -rf \
+        "$VAULT_MOUNT"
 
-    mkdir -p "$VAULT_MOUNT"
+    mkdir -p \
+        "$VAULT_MOUNT"
 
     header
 
-    echo -e \
-        "${BOLD}🔐 OPEN VAULT: $selected_vault${RESET}" \
+    echo \
+        "🔐 Vault: $selected_vault" \
         > /dev/tty
 
     echo > /dev/tty
@@ -1219,14 +1405,17 @@ open_vault() {
         error_msg \
             "Неверный пароль или повреждённый Vault."
 
-        rm -rf "$VAULT_MOUNT"
+        rm -rf \
+            "$VAULT_MOUNT"
 
         pause_screen
 
         return
+
     fi
 
-    success "Vault открыт."
+    success \
+        "Vault открыт."
 
     while true; do
 
@@ -1251,6 +1440,7 @@ open_vault() {
                         >/dev/null 2>&1 &
 
                 fi
+
                 ;;
 
             1)
@@ -1266,6 +1456,7 @@ open_vault() {
                     > /dev/tty
 
                 pause_screen
+
                 ;;
 
             2|255)
@@ -1284,11 +1475,13 @@ open_vault() {
                 pause_screen
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 vault_menu() {
@@ -1306,20 +1499,27 @@ vault_menu() {
         case "$selected" in
 
             0)
+
                 create_vault
+
                 ;;
 
             1)
+
                 open_vault
+
                 ;;
 
             2|255)
+
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
@@ -1361,6 +1561,7 @@ backup_menu() {
                     pause_screen
 
                     continue
+
                 fi
 
                 local timestamp
@@ -1374,6 +1575,12 @@ backup_menu() {
 
                 mkdir -p \
                     "$destination"
+
+                echo > /dev/tty
+
+                echo \
+                    "📦 Создание Backup..." \
+                    > /dev/tty
 
                 if cp -a \
                     "$source" \
@@ -1415,11 +1622,13 @@ backup_menu() {
             2|255)
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
@@ -1445,28 +1654,45 @@ diagnostics_menu() {
 
                 header
 
-                echo "Device:      $DEVICE" > /dev/tty
-                echo "Mount:       $DEVICE_MOUNT" > /dev/tty
-
-                echo > /dev/tty
-
-                echo "Size:        $(lsblk -ndo SIZE "$DEVICE" 2>/dev/null)" \
+                echo \
+                    "Device:      $DEVICE" \
                     > /dev/tty
 
-                echo "Filesystem:  $(lsblk -ndo FSTYPE "$DEVICE" 2>/dev/null)" \
-                    > /dev/tty
-
-                echo "Label:       $(lsblk -ndo LABEL "$DEVICE" 2>/dev/null)" \
-                    > /dev/tty
-
-                echo "Model:       $(lsblk -ndo MODEL "$DEVICE" 2>/dev/null)" \
+                echo \
+                    "Mount:       $DEVICE_MOUNT" \
                     > /dev/tty
 
                 echo > /dev/tty
 
-                echo "FlashOS:     $(get_manifest DEVICE_NAME)" > /dev/tty
-                echo "Version:     $(get_manifest FLASHOS_VERSION)" > /dev/tty
-                echo "Security:    $(get_manifest SECURITY)" > /dev/tty
+                echo \
+                    "Size:        $(lsblk -ndo SIZE "$DEVICE" 2>/dev/null)" \
+                    > /dev/tty
+
+                echo \
+                    "Filesystem:  $(lsblk -ndo FSTYPE "$DEVICE" 2>/dev/null)" \
+                    > /dev/tty
+
+                echo \
+                    "Label:       $(lsblk -ndo LABEL "$DEVICE" 2>/dev/null)" \
+                    > /dev/tty
+
+                echo \
+                    "Model:       $(lsblk -ndo MODEL "$DEVICE" 2>/dev/null)" \
+                    > /dev/tty
+
+                echo > /dev/tty
+
+                echo \
+                    "FlashOS:     $(get_manifest DEVICE_NAME)" \
+                    > /dev/tty
+
+                echo \
+                    "Version:     $(get_manifest FLASHOS_VERSION)" \
+                    > /dev/tty
+
+                echo \
+                    "Security:    $(get_manifest SECURITY)" \
+                    > /dev/tty
 
                 pause_screen
 
@@ -1476,27 +1702,42 @@ diagnostics_menu() {
 
                 header
 
-                local path
-
                 local required_paths=(
 
                     "$FLASHOS_DIR/manifest"
+
                     "$FLASHOS_DIR/system"
+
                     "$FLASHOS_DIR/packages"
+
                     "$FLASHOS_DIR/recovery"
+
                     "$FLASHOS_DIR/logs"
+
                     "$FLASHOS_DIR/vaults"
+
                     "$FLASHOS_DIR/data"
+
                     "$FLASHOS_DIR/flashos.sh"
 
                 )
 
-                for path in "${required_paths[@]}"; do
+                local path
+
+                for path in \
+                    "${required_paths[@]}"
+                do
 
                     if [[ -e "$path" ]]; then
-                        success "$path"
+
+                        success \
+                            "$path"
+
                     else
-                        error_msg "Missing: $path"
+
+                        error_msg \
+                            "Missing: $path"
+
                     fi
 
                 done
@@ -1527,11 +1768,13 @@ diagnostics_menu() {
             3|255)
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
@@ -1565,6 +1808,7 @@ settings_menu() {
                 if [[ -n "$new_name" ]]; then
 
                     new_name="${new_name//\//_}"
+
                     new_name="${new_name:0:15}"
 
                     write_manifest \
@@ -1573,6 +1817,7 @@ settings_menu() {
 
                     success \
                         "Имя изменено на $new_name."
+
                 fi
 
                 pause_screen
@@ -1594,56 +1839,206 @@ settings_menu() {
             2|255)
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
-# GITHUB UPDATE
+# GITHUB RELEASE HELPERS
 # ============================================================
 
-get_remote_version() {
+get_latest_release_json() {
 
     curl \
         -fsSL \
-        --connect-timeout 8 \
-        --max-time 20 \
-        "$GITHUB_RAW_URL" \
-        2>/dev/null \
-        | sed \
-            -n \
-            's/^FLASHOS_VERSION="\([0-9][0-9.]*\)"/\1/p' \
+        --connect-timeout 10 \
+        --max-time 30 \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "$GITHUB_API" \
+        2>/dev/null
+
+}
+
+get_release_tag() {
+
+    local json="$1"
+
+    printf '%s' "$json" \
+        | jq -r '.tag_name // empty'
+
+}
+
+get_release_name() {
+
+    local json="$1"
+
+    printf '%s' "$json" \
+        | jq -r '.name // empty'
+
+}
+
+get_release_date() {
+
+    local json="$1"
+
+    printf '%s' "$json" \
+        | jq -r '.published_at // empty'
+
+}
+
+get_release_url() {
+
+    local json="$1"
+
+    printf '%s' "$json" \
+        | jq -r '.html_url // empty'
+
+}
+
+get_release_body() {
+
+    local json="$1"
+
+    printf '%s' "$json" \
+        | jq -r '.body // empty'
+
+}
+
+get_tag_script_url() {
+
+    local tag="$1"
+
+    printf '%s\n' \
+        "https://raw.githubusercontent.com/${GITHUB_REPO}/${tag}/flashos.sh"
+
+}
+
+get_script_version() {
+
+    local file="$1"
+
+    sed -n \
+        's/^FLASHOS_VERSION="\([0-9][0-9.]*\)"/\1/p' \
+        "$file" \
         | head -n1
+
 }
 
-version_gt() {
+version_is_newer() {
 
-    local a="$1"
-    local b="$2"
+    local remote="$1"
 
-    [[ "$a" != "$b" ]] || return 1
+    local local="$2"
 
-    [[ \
-        "$(printf '%s\n%s\n' "$a" "$b" | sort -V | tail -n1)" \
-        == "$a"
-    ]]
+    [[ "$remote" != "$local" ]] || return 1
+
+    local newest
+
+    newest=$(printf \
+        '%s\n%s\n' \
+        "$remote" \
+        "$local" \
+        | sort -V \
+        | tail -n1)
+
+    [[ "$newest" == "$remote" ]]
+
 }
 
-download_update() {
+# ============================================================
+# RELEASE NOTES
+# ============================================================
 
-    local output="$1"
+show_release_notes() {
 
-    curl \
-        -fL \
-        --connect-timeout 8 \
-        --max-time 60 \
-        --progress-bar \
-        "$GITHUB_RAW_URL" \
-        -o "$output"
+    local json="$1"
+
+    local name
+
+    local tag
+
+    local published
+
+    local url
+
+    local body
+
+    name=$(get_release_name "$json")
+
+    tag=$(get_release_tag "$json")
+
+    published=$(get_release_date "$json")
+
+    url=$(get_release_url "$json")
+
+    body=$(get_release_body "$json")
+
+    header
+
+    echo -e \
+        "${BOLD}📋 GITHUB LATEST RELEASE${RESET}" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    echo \
+        "Release:   ${name:-$tag}" \
+        > /dev/tty
+
+    echo \
+        "Tag:       $tag" \
+        > /dev/tty
+
+    [[ -n "$published" ]] && \
+        echo \
+            "Published: $published" \
+            > /dev/tty
+
+    echo > /dev/tty
+
+    echo -e \
+        "${BOLD}Что нового:${RESET}" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    if [[ -n "$body" ]]; then
+
+        printf '%s\n' \
+            "$body" \
+            > /dev/tty
+
+    else
+
+        echo \
+            "Описание релиза отсутствует." \
+            > /dev/tty
+
+    fi
+
+    echo > /dev/tty
+
+    if [[ -n "$url" ]]; then
+
+        echo \
+            "GitHub: $url" \
+            > /dev/tty
+
+    fi
+
+    pause_screen
+
 }
+
+# ============================================================
+# UPDATE FLASHOS
+# ============================================================
 
 update_flashos() {
 
@@ -1655,32 +2050,155 @@ update_flashos() {
 
     echo > /dev/tty
 
-    info "Проверяю GitHub..."
+    info \
+        "Проверяю GitHub Latest Release..."
 
-    local remote_version
+    local json
 
-    remote_version=$(get_remote_version || true)
+    json=$(get_latest_release_json || true)
+
+    if [[ -z "$json" ]]; then
+
+        error_msg \
+            "Не удалось получить Latest Release."
+
+        pause_screen
+
+        return
+
+    fi
+
+    local tag
+
+    local release_name
+
+    local release_url
+
+    tag=$(get_release_tag "$json")
+
+    release_name=$(get_release_name "$json")
+
+    release_url=$(get_release_url "$json")
+
+    if [[ -z "$tag" ]]; then
+
+        error_msg \
+            "GitHub не вернул tag_name."
+
+        pause_screen
+
+        return
+
+    fi
+
+    local latest_url
+
+    latest_url=$(get_tag_script_url "$tag")
 
     local local_version
 
     local_version=$(get_manifest FLASHOS_VERSION)
 
-    if [[ -z "$remote_version" ]]; then
+    [[ -n "$local_version" ]] || \
+        local_version="$FLASHOS_VERSION"
+
+    echo \
+        "Installed: $local_version" \
+        > /dev/tty
+
+    echo \
+        "Release:   ${release_name:-$tag}" \
+        > /dev/tty
+
+    echo \
+        "Tag:       $tag" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    local temp_file
+
+    temp_file="$RUNTIME_BASE/flashos-update.sh"
+
+    rm -f \
+        "$temp_file"
+
+    echo \
+        "⬇ Скачиваю flashos.sh из Latest Release..." \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    if ! curl \
+        -fL \
+        --connect-timeout 10 \
+        --max-time 60 \
+        --progress-bar \
+        "$latest_url" \
+        -o "$temp_file"
+    then
 
         error_msg \
-            "Не удалось получить версию с GitHub."
+            "Не удалось скачать flashos.sh."
+
+        rm -f \
+            "$temp_file"
 
         pause_screen
 
         return
+
     fi
 
+    echo > /dev/tty
+
     echo \
-        "Установлено: $local_version" \
+        "🧪 Проверка Bash syntax..." \
+        > /dev/tty
+
+    if ! bash \
+        -n \
+        "$temp_file"
+    then
+
+        error_msg \
+            "Скачанный файл содержит ошибку Bash syntax."
+
+        rm -f \
+            "$temp_file"
+
+        pause_screen
+
+        return
+
+    fi
+
+    local remote_version
+
+    remote_version=$(get_script_version "$temp_file")
+
+    if [[ -z "$remote_version" ]]; then
+
+        error_msg \
+            "Не найден FLASHOS_VERSION в скачанном файле."
+
+        rm -f \
+            "$temp_file"
+
+        pause_screen
+
+        return
+
+    fi
+
+    echo > /dev/tty
+
+    echo \
+        "Installed version: $local_version" \
         > /dev/tty
 
     echo \
-        "GitHub:      $remote_version" \
+        "Release version:   $remote_version" \
         > /dev/tty
 
     echo > /dev/tty
@@ -1690,113 +2208,110 @@ update_flashos() {
         success \
             "FlashOS уже последней версии."
 
-        pause_screen
+        rm -f \
+            "$temp_file"
+
+        local choice
+
+        choice=$(arrow_menu \
+            "LATEST RELEASE" \
+            "📋 Посмотреть изменения" \
+            "⬅ Назад")
+
+        case "$choice" in
+
+            0)
+
+                show_release_notes "$json"
+
+                ;;
+
+        esac
 
         return
+
     fi
 
-    if ! version_gt \
+    if ! version_is_newer \
         "$remote_version" \
         "$local_version"
     then
 
         warn \
-            "GitHub-версия не новее текущей."
+            "Версия из Latest Release не новее установленной."
+
+        rm -f \
+            "$temp_file"
 
         pause_screen
 
         return
+
     fi
 
-    warn \
-        "Доступно обновление: $local_version → $remote_version"
-
-    echo > /dev/tty
-
-    echo \
-        "Обновляется только системный manager." \
-        > /dev/tty
-
-    echo \
-        "Зашифрованные данные, Vault и Backup не заменяются." \
+    echo -e \
+        "${YELLOW}${BOLD}⚡ Доступно обновление: $local_version → $remote_version${RESET}" \
         > /dev/tty
 
     echo > /dev/tty
 
-    read -rp \
-        "Продолжить? [y/N]: " \
-        answer < /dev/tty
+    echo \
+        "Обновляется только FlashOS Manager." \
+        > /dev/tty
 
-    [[ "${answer,,}" == "y" ]] || return
+    echo \
+        "Пользовательские данные НЕ заменяются." \
+        > /dev/tty
 
-    local temp_file
+    echo \
+        "Vault НЕ заменяются." \
+        > /dev/tty
 
-    temp_file="$RUNTIME_BASE/flashos-update.sh"
-
-    rm -f "$temp_file"
+    echo \
+        "Backup НЕ заменяются." \
+        > /dev/tty
 
     echo > /dev/tty
 
-    echo \
-        "⬇ Скачиваю flashos.sh..." \
-        > /dev/tty
+    local action
 
-    if ! download_update \
-        "$temp_file"
-    then
+    action=$(arrow_menu \
+        "🔄 UPDATE $local_version → $remote_version" \
+        "🚀 Установить обновление" \
+        "📋 Посмотреть изменения" \
+        "❌ Отмена")
 
-        error_msg \
-            "Не удалось скачать обновление."
+    case "$action" in
 
-        rm -f "$temp_file"
+        0)
 
-        pause_screen
+            ;;
 
-        return
-    fi
+        1)
 
-    echo > /dev/tty
+            show_release_notes "$json"
 
-    echo \
-        "🧪 Проверяю Bash syntax..." \
-        > /dev/tty
+            rm -f \
+                "$temp_file"
 
-    if ! bash -n \
-        "$temp_file"
-    then
+            return
 
-        error_msg \
-            "Скачанный файл не прошёл syntax check."
+            ;;
 
-        rm -f "$temp_file"
+        2|255)
 
-        pause_screen
+            rm -f \
+                "$temp_file"
 
-        return
-    fi
+            return
 
-    local downloaded_version
+            ;;
 
-    downloaded_version=$(sed \
-        -n \
-        's/^FLASHOS_VERSION="\([0-9][0-9.]*\)"/\1/p' \
-        "$temp_file" \
-        | head -n1)
+    esac
 
-    if [[ \
-        "$downloaded_version" != \
-        "$remote_version"
-    ]]; then
-
-        error_msg \
-            "Версия скачанного файла не совпала с GitHub."
-
-        rm -f "$temp_file"
-
-        pause_screen
-
-        return
-    fi
+    # --------------------------------------------------------
+    # Backup старого менеджера
+    # --------------------------------------------------------
 
     local backup_dir
 
@@ -1809,11 +2324,19 @@ update_flashos() {
         -f "$FLASHOS_DIR/flashos.sh"
     ]]; then
 
+        local backup_file
+
+        backup_file="$backup_dir/flashos-${local_version}-$(date '+%Y%m%d-%H%M%S').sh"
+
         cp -a \
             "$FLASHOS_DIR/flashos.sh" \
-            "$backup_dir/flashos-${local_version}-$(date '+%Y%m%d-%H%M%S').sh"
+            "$backup_file"
 
     fi
+
+    # --------------------------------------------------------
+    # Install new manager
+    # --------------------------------------------------------
 
     chmod 755 \
         "$temp_file"
@@ -1834,25 +2357,50 @@ update_flashos() {
     echo > /dev/tty
 
     success \
-        "FlashOS обновлён до версии $remote_version."
+        "FlashOS обновлён до $remote_version."
 
-    echo > /dev/tty
+    if [[ -n "$release_url" ]]; then
 
-    read -rp \
-        "Запустить новую версию сейчас? [Y/n]: " \
-        restart < /dev/tty
-
-    if [[ \
-        -z "$restart" || \
-        "${restart,,}" == "y"
-    ]]; then
-
-        exec bash \
-            "$FLASHOS_DIR/flashos.sh"
+        echo \
+            "Release: $release_url" \
+            > /dev/tty
 
     fi
 
+    echo > /dev/tty
+
+    echo \
+        "Старый manager сохранён в recovery." \
+        > /dev/tty
+
     pause_screen
+
+    # --------------------------------------------------------
+    # Start updated manager
+    # --------------------------------------------------------
+
+    local restart
+
+    restart=$(arrow_menu \
+        "UPDATE COMPLETE" \
+        "🔄 Запустить новую версию" \
+        "✅ Остаться")
+
+    case "$restart" in
+
+        0)
+
+            exec bash \
+                "$FLASHOS_DIR/flashos.sh"
+
+            ;;
+
+        *)
+
+            ;;
+
+    esac
+
 }
 
 # ============================================================
@@ -1870,11 +2418,7 @@ remove_flashos() {
     echo > /dev/tty
 
     echo \
-        "Будет полностью очищен раздел:" \
-        > /dev/tty
-
-    echo \
-        "$DEVICE" \
+        "Устройство: $DEVICE" \
         > /dev/tty
 
     echo > /dev/tty
@@ -1888,7 +2432,7 @@ remove_flashos() {
         > /dev/tty
 
     echo \
-        "  • зашифрованные данные" \
+        "  • зашифрованное хранилище" \
         > /dev/tty
 
     echo \
@@ -1913,13 +2457,18 @@ remove_flashos() {
         "Введи REMOVE FLASHOS: " \
         first < /dev/tty
 
-    if [[ "$first" != "REMOVE FLASHOS" ]]; then
+    if [[ \
+        "$first" != \
+        "REMOVE FLASHOS"
+    ]]; then
 
-        warn "Удаление отменено."
+        warn \
+            "Удаление отменено."
 
         pause_screen
 
         return
+
     fi
 
     local second
@@ -1928,13 +2477,18 @@ remove_flashos() {
         "Введи DELETE-ALL: " \
         second < /dev/tty
 
-    if [[ "$second" != "DELETE-ALL" ]]; then
+    if [[ \
+        "$second" != \
+        "DELETE-ALL"
+    ]]; then
 
-        warn "Удаление отменено."
+        warn \
+            "Удаление отменено."
 
         pause_screen
 
         return
+
     fi
 
     lock_flashos
@@ -1947,6 +2501,7 @@ remove_flashos() {
         pause_screen
 
         return
+
     fi
 
     success \
@@ -1956,10 +2511,65 @@ remove_flashos() {
         "Флешка очищена и отформатирована в exFAT."
 
     pause_screen
+
 }
 
 # ============================================================
-# WORK MENU
+# INFO
+# ============================================================
+
+show_flashos_info() {
+
+    header
+
+    echo -e \
+        "${BOLD}ℹ FLASHOS INFORMATION${RESET}" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    echo \
+        "Device:       $DEVICE" \
+        > /dev/tty
+
+    echo \
+        "Name:         $(get_manifest DEVICE_NAME)" \
+        > /dev/tty
+
+    echo \
+        "FlashOS:      $(get_manifest FLASHOS_VERSION)" \
+        > /dev/tty
+
+    echo \
+        "Filesystem:   $(get_manifest FILESYSTEM)" \
+        > /dev/tty
+
+    echo \
+        "Security:     $(get_manifest SECURITY)" \
+        > /dev/tty
+
+    echo \
+        "Manager:      $(get_manifest MANAGER)" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    echo \
+        "GitHub:       https://github.com/$GITHUB_REPO" \
+        > /dev/tty
+
+    echo > /dev/tty
+
+    df -h \
+        "$DEVICE_MOUNT" \
+        > /dev/tty
+
+    pause_screen
+
+}
+
+# ============================================================
+# MAIN WORK MENU
 # ============================================================
 
 work_menu() {
@@ -1969,6 +2579,7 @@ work_menu() {
         pause_screen
 
         return
+
     fi
 
     while true; do
@@ -1992,27 +2603,39 @@ work_menu() {
         case "$selected" in
 
             0)
+
                 files_menu
+
                 ;;
 
             1)
+
                 vault_menu
+
                 ;;
 
             2)
+
                 backup_menu
+
                 ;;
 
             3)
+
                 diagnostics_menu
+
                 ;;
 
             4)
+
                 settings_menu
+
                 ;;
 
             5)
+
                 update_flashos
+
                 ;;
 
             6|255)
@@ -2020,11 +2643,13 @@ work_menu() {
                 lock_flashos
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
@@ -2039,12 +2664,17 @@ flashos_found_menu() {
 
         name=$(get_manifest DEVICE_NAME)
 
+        local installed_version
+
+        installed_version=$(get_manifest FLASHOS_VERSION)
+
         local selected
 
         selected=$(arrow_menu \
-            "💾 FLASHOS: ${name:-FLASHOS}" \
+            "💾 FLASHOS: ${name:-FLASHOS} [$installed_version]" \
             "🚀 Работать с FlashOS" \
-            "🔄 Обновить FlashOS с GitHub" \
+            "🔄 Обновить до Latest Release" \
+            "📋 Посмотреть изменения Latest Release" \
             "🗑 Удалить FlashOS" \
             "ℹ Информация" \
             "🔌 Сменить USB" \
@@ -2055,43 +2685,67 @@ flashos_found_menu() {
             0)
 
                 work_menu
+
                 ;;
 
             1)
 
                 update_flashos
+
                 ;;
 
             2)
 
-                remove_flashos
+                local latest_json
 
-                return
+                latest_json=$(get_latest_release_json || true)
+
+                if [[ -n "$latest_json" ]]; then
+
+                    show_release_notes \
+                        "$latest_json"
+
+                else
+
+                    error_msg \
+                        "Не удалось получить Latest Release."
+
+                    pause_screen
+
+                fi
+
                 ;;
 
             3)
 
-                diagnostics_menu
+                remove_flashos
+
+                return
+
                 ;;
 
             4)
 
-                return
+                show_flashos_info
+
                 ;;
 
             5)
 
                 return
+
                 ;;
 
             6|255)
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
@@ -2109,6 +2763,7 @@ cleanup() {
             -u \
             "$VAULT_MOUNT" \
             >/dev/null 2>&1 || true
+
     fi
 
     if mountpoint -q \
@@ -2120,6 +2775,7 @@ cleanup() {
             -u \
             "$MAIN_MOUNT" \
             >/dev/null 2>&1 || true
+
     fi
 
     rm -rf \
@@ -2129,12 +2785,13 @@ cleanup() {
     rmdir \
         "$RUNTIME_BASE" \
         2>/dev/null || true
+
 }
 
 trap cleanup EXIT INT TERM
 
 # ============================================================
-# MAIN
+# STARTUP
 # ============================================================
 
 main() {
@@ -2155,7 +2812,8 @@ main() {
 
             echo > /dev/tty
 
-            success "Флешка найдена."
+            success \
+                "Флешка найдена."
 
             echo \
                 "Device:  $DEVICE" \
@@ -2169,11 +2827,17 @@ main() {
                 "Version: $(get_manifest FLASHOS_VERSION)" \
                 > /dev/tty
 
+            echo > /dev/tty
+
+            success \
+                "FlashOS найден."
+
             sleep 0.6
 
             flashos_found_menu
 
             return
+
         fi
 
         echo > /dev/tty
@@ -2196,25 +2860,29 @@ main() {
             0)
 
                 install_flashos
+
                 ;;
 
             1)
 
                 continue
+
                 ;;
 
             2|255)
 
                 return
+
                 ;;
 
         esac
 
     done
+
 }
 
 # ============================================================
-# START
+# RUN
 # ============================================================
 
 main
