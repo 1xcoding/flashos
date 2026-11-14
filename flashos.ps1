@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 
 # ===========================================================
 #                    FLASHOS MANAGER (PowerShell)
@@ -10,6 +10,12 @@
 # https://github.com/1xcoding/flashos
 #
 # SINGLE FILE EDITION (PowerShell for Windows)
+#
+# Works on Windows PowerShell 5.1 and PowerShell 7+.
+#
+# IMPORTANT: keep this file saved as "UTF-8 with BOM".
+# Windows PowerShell 5.1 reads a BOM-less file as ANSI, which turns the
+# emoji / Cyrillic strings into garbage and breaks parsing.
 #
 # ===========================================================
 # FEATURES
@@ -135,7 +141,7 @@ function Show-Menu([string]$Title, [string[]]$Options) {
 function Check-Dependencies {
     $Missing = @()
     # Windows PowerShell equivalents (mostly built-in, but checking for external tools)
-    $RequiredCommands = @("Get-PhysicalDisk", "Format-Volume", "Invoke-RestMethod")
+    $RequiredCommands = @("Get-Disk", "Get-Partition", "Format-Volume", "Invoke-RestMethod")
     
     foreach ($Cmd in $RequiredCommands) {
         if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) {
@@ -160,14 +166,17 @@ function Check-Dependencies {
 # ===========================================================
 
 function Get-UsbPartitions {
-    # Get removable disks and their partitions
-    $Disks = Get-PhysicalDisk -CanPool $false | Where-Object { $_.MediaType -eq 'Removable' -or $_.MediaType -eq 'USB' }
+    # Get USB disks and the drive letters of their partitions.
+    # USB sticks are identified by BusType: their MediaType is "Unspecified".
     $Partitions = @()
+    $Disks = Get-Disk -ErrorAction SilentlyContinue | Where-Object { $_.BusType -eq 'USB' }
     foreach ($Disk in $Disks) {
-        $Parts = Get-Partition -DiskNumber $Disk.Number
+        $Parts = Get-Partition -DiskNumber $Disk.Number -ErrorAction SilentlyContinue
         foreach ($P in $Parts) {
-            if ($P.DriveLetter) {
-                $Partitions += $P.DriveLetter + ":"
+            # DriveLetter is a [char]; it is "`0" when no letter is assigned
+            $Letter = "$($P.DriveLetter)"
+            if ($Letter -match '^[A-Za-z]$') {
+                $Partitions += "${Letter}:"
             }
         }
     }
@@ -241,13 +250,36 @@ function Write-Manifest([string]$Name, [string]$Version) {
 }
 
 # ===========================================================
+# NOT IMPLEMENTED YET (placeholders)
+# ===========================================================
+
+function Update-FlashOS {
+    Write-Host "Update FlashOS (placeholder)"
+    Pause-Screen
+}
+
+function Remove-FlashOS {
+    Write-Host "Remove FlashOS (placeholder)"
+    Pause-Screen
+}
+
+# ===========================================================
+# DEVICE TITLE
+# ===========================================================
+
+function Get-DeviceTitle {
+    $Name = Get-Manifest "DEVICE_NAME"
+    if ($Name -eq "") { $Name = "FLASHOS" }
+    return $Name
+}
+
+# ===========================================================
 # MAIN WORK MENU
 # ===========================================================
 
 function Work-Menu {
     while ($true) {
-        $Name = Get-Manifest "DEVICE_NAME"
-        $Selected = Show-Menu "💾 FLASHOS: $($Name -ne "" ? $Name : "FLASHOS")" @(
+        $Selected = Show-Menu "💾 FLASHOS: $(Get-DeviceTitle)" @(
             "📁 Files",
             "🔐 Vault Mode",
             "💾 Backup",
@@ -257,6 +289,9 @@ function Work-Menu {
             "🔒 Lock FlashOS"
         )
         
+        # Esc / "Lock FlashOS"
+        if ($Selected -eq -1 -or $Selected -eq 6) { return }
+
         switch ($Selected) {
             0 { Write-Host "Files menu (placeholder)" ; Pause-Screen }
             1 { Write-Host "Vault menu (placeholder)" ; Pause-Screen }
@@ -264,7 +299,6 @@ function Work-Menu {
             3 { Write-Host "Diagnostics menu (placeholder)" ; Pause-Screen }
             4 { Write-Host "Settings menu (placeholder)" ; Pause-Screen }
             5 { Update-FlashOS }
-            -1, 6 { return }
         }
     }
 }
@@ -275,9 +309,8 @@ function Work-Menu {
 
 function FlashOS-Found-Menu {
     while ($true) {
-        $Name = Get-Manifest "DEVICE_NAME"
         $InstalledVersion = Get-Manifest "FLASHOS_VERSION"
-        $Selected = Show-Menu "💾 FLASHOS: $($Name -ne "" ? $Name : "FLASHOS") [$InstalledVersion]" @(
+        $Selected = Show-Menu "💾 FLASHOS: $(Get-DeviceTitle) [$InstalledVersion]" @(
             "🚀 Работать с FlashOS",
             "🔄 Обновить до Latest Release",
             "📋 Посмотреть изменения Latest Release",
@@ -287,6 +320,9 @@ function FlashOS-Found-Menu {
             "❌ Выход"
         )
         
+        # Esc / "Сменить USB" / "Выход"
+        if ($Selected -eq -1 -or $Selected -eq 5 -or $Selected -eq 6) { return }
+
         switch ($Selected) {
             0 { Work-Menu }
             1 { Update-FlashOS }
@@ -294,7 +330,7 @@ function FlashOS-Found-Menu {
             3 { Remove-FlashOS }
             4 { 
                 Header
-                Write-Host "ℹ FLASHOS INFORMATION" -ForegroundColor Bold
+                Write-Host "ℹ FLASHOS INFORMATION" -ForegroundColor White
                 Write-Host ""
                 Write-Host "Device:       $global:Device"
                 Write-Host "Name:         $(Get-Manifest 'DEVICE_NAME')"
@@ -307,7 +343,6 @@ function FlashOS-Found-Menu {
                 Write-Host ""
                 Pause-Screen
             }
-            -1, 5, 6 { return }
         }
     }
 }
@@ -352,10 +387,12 @@ function Main {
             "❌ Выход"
         )
         
+        # Esc / "Выход"
+        if ($Selected -eq -1 -or $Selected -eq 2) { return }
+
         switch ($Selected) {
             0 { Write-Host "Install FlashOS (placeholder)" ; Pause-Screen }
-            1 { continue }
-            -1, 2 { return }
+            # 1 = "Повторить поиск": just fall through to the next loop iteration
         }
     }
 }
